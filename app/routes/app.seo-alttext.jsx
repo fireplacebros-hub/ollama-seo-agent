@@ -41,7 +41,7 @@ export async function action({ request }) {
       headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
       body: JSON.stringify({
         model: "llama3.1:8b",
-        prompt: `You are an SEO specialist. Write descriptive alt text for a product image. Product: ${productTitle}. Description: ${productDescription || "None"}. Rules: minimum 80 characters, include product name, be specific and descriptive, do NOT start with Image of, return ONLY the alt text on a single line, no explanations, no bullet points.`,
+        prompt: `You are an SEO specialist. Write descriptive alt text for a product image. Product: ${productTitle}. Description: ${productDescription || "None"}. Rules: minimum 80 characters, maximum 125 characters, include product name, be specific and descriptive, do NOT start with Image of, return ONLY the alt text on a single line, no explanations, no bullet points.`,
         stream: false,
       }),
     });
