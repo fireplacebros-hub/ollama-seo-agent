@@ -2,7 +2,7 @@
 
 client_id = "618694b11bc0d530b94dfb01818272f8"
 name = "Ollama SEO Agent"
-application_url = "https://example.com"
+application_url = "https://ollama-seo-agent.onrender.com"
 embedded = true
 
 [webhooks]
