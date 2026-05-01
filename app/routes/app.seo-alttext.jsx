@@ -102,12 +102,12 @@ export default function SeoAltText() {
 
     while (hasMore && !stopRef.current) {
       const url = cursor
-        ? `${window.location.pathname}?cursor=${cursor}`
-        : window.location.pathname;
+        ? `/app/seo-products-api?cursor=${cursor}`
+        : "/app/seo-products-api";
 
       let pageData;
       try {
-        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        const res = await fetch(url.replace("/app/seo-alttext", "/app/seo-products-api"), { headers: { "Accept": "application/json" } });
         const text = await res.text(); console.log("Page response:", text.substring(0, 200)); pageData = JSON.parse(text);
       } catch {
         break;
