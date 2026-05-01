@@ -84,7 +84,7 @@ export default function SeoAltText() {
     formData.append("productDescription", productDescription || "");
     formData.append("productId", productId);
     try {
-      const res = await fetch(window.location.pathname, { method: "POST", body: formData });
+      const res = await fetch("https://ollama-seo-agent.onrender.com/app/seo-alttext", { method: "POST", body: formData });
       const data = await res.json();
       return data;
     } catch {
