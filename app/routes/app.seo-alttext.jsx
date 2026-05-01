@@ -96,6 +96,7 @@ export default function SeoAltText() {
     setRunning(true);
     setDone(false);
     stopRef.current = false;
+    const keepAlive = setInterval(() => fetch("https://ollama-seo-agent.onrender.com/app/seo-alttext"), 60000);
     let cursor = null;
     let hasMore = true;
     let generated = 0, skipped = 0, failed = 0;
@@ -134,6 +135,7 @@ export default function SeoAltText() {
       cursor = pageData.endCursor;
     }
 
+    clearInterval(keepAlive);
     setRunning(false);
     setDone(true);
     setProgress(prev => ({ ...prev, current: "Complete!" }));
