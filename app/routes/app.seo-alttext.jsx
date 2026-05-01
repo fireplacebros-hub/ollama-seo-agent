@@ -107,8 +107,8 @@ export default function SeoAltText() {
 
       let pageData;
       try {
-        const res = await fetch(url);
-        pageData = await res.json();
+        const res = await fetch(url, { headers: { "Accept": "application/json" } });
+        const text = await res.text(); console.log("Page response:", text.substring(0, 200)); pageData = JSON.parse(text);
       } catch {
         break;
       }
