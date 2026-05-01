@@ -1,6 +1,6 @@
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { useState, useRef } from "react";
+import { useState } from "react";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
@@ -72,12 +72,29 @@ export async function action({ request }) {
 
 export default function SeoAltText() {
   const initialData = useLoaderData();
-  const [running, setRunning] = useState(false);
-  const [done, setDone] = useState(false);
-  const [progress, setProgress] = useState({ generated: 0, skipped: 0, failed: 0, current: "" });
-  const stopRef = useRef(false);
+  const [products, setProducts] = useState(initialData.products);
+  const [hasNextPage, setHasNextPage] = useState(initialData.hasNextPage);
+  const [endCursor, setEndCursor] = useState(initialData.endCursor);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [allResults, setAllResults] = useState({});
+  const [allGenerating, setAllGenerating] = useState({});
+
+  const loadMore = async () => {
+    setLoadingMore(true);
+    try {
+      const res = await fetch(`/app/seo-products-api?cursor=${endCursor}`);
+      const data = await res.json();
+      setProducts(prev => [...prev, ...data.products]);
+      setHasNextPage(data.hasNextPage);
+      setEndCursor(data.endCursor);
+    } catch {
+      alert("Failed to load more products");
+    }
+    setLoadingMore(false);
+  };
 
   const generateOne = async (mediaId, productTitle, productDescription, productId) => {
+    setAllGenerating(prev => ({ ...prev, [mediaId]: true }));
     const formData = new FormData();
     formData.append("imageId", mediaId);
     formData.append("productTitle", productTitle);
@@ -86,127 +103,74 @@ export default function SeoAltText() {
     try {
       const res = await fetch("https://ollama-seo-agent.onrender.com/app/seo-alttext", { method: "POST", body: formData });
       const data = await res.json();
-      return data;
+      setAllResults(prev => ({ ...prev, [mediaId]: data }));
     } catch {
-      return { error: "Request failed" };
+      setAllResults(prev => ({ ...prev, [mediaId]: { error: "Request failed" } }));
     }
+    setAllGenerating(prev => ({ ...prev, [mediaId]: false }));
   };
 
-  const handleRunAll = async () => {
-    setRunning(true);
-    setDone(false);
-    stopRef.current = false;
-    const keepAlive = setInterval(() => fetch("https://ollama-seo-agent.onrender.com/app/seo-alttext"), 60000);
-    let cursor = null;
-    let hasMore = true;
-    let generated = 0, skipped = 0, failed = 0;
-
-    while (hasMore && !stopRef.current) {
-      const url = cursor
-        ? `/app/seo-products-api?cursor=${cursor}`
-        : "/app/seo-products-api";
-
-      let pageData;
-      try {
-        const res = await fetch(url.replace("/app/seo-alttext", "/app/seo-products-api"), { headers: { "Accept": "application/json" } });
-        const text = await res.text(); console.log("Page response:", text.substring(0, 200)); pageData = JSON.parse(text);
-      } catch {
-        break;
-      }
-
-      for (const product of pageData.products) {
-        if (stopRef.current) break;
-        for (const media of product.media.nodes.filter(m => m.image)) {
-          if (stopRef.current) break;
-          if (media.image.altText) {
-            skipped++;
-            setProgress({ generated, skipped, failed, current: product.title });
-            continue;
-          }
-          setProgress({ generated, skipped, failed, current: product.title });
-          const result = await generateOne(media.id, product.title, product.description, product.id);
-          if (result.success) generated++;
-          else failed++;
-          setProgress({ generated, skipped, failed, current: product.title });
-        }
-      }
-
-      hasMore = pageData.hasNextPage;
-      cursor = pageData.endCursor;
-    }
-
-    clearInterval(keepAlive);
-    setRunning(false);
-    setDone(true);
-    setProgress(prev => ({ ...prev, current: "Complete!" }));
-  };
-
-  const handleStop = () => {
-    stopRef.current = true;
-  };
+  const totalImages = products.reduce((acc, p) => acc + p.media.nodes.filter(m => m.image).length, 0);
+  const missingAlt = products.reduce((acc, p) => acc + p.media.nodes.filter(m => m.image && !m.image.altText && !allResults[m.id]?.success).length, 0);
 
   return (
     <s-page heading="SEO Alt Text Generator">
-      <s-section heading="Bulk Alt Text Generator">
-        <s-paragraph>
-          Automatically generates SEO alt text (80-125 chars) for all products using Ollama llama3.1:8b on your Mac.
-          Products are processed silently in batches. Do not close this page while running.
-        </s-paragraph>
-
-        <div style={{ marginTop: "16px", display: "flex", gap: "12px" }}>
-          {!running && !done && (
+      <s-section heading={`${missingAlt} of ${totalImages} loaded images missing alt text`}>
+        <s-paragraph>Showing 50 products at a time. Click Load More to see more. Generate SEO alt text (80-125 chars) using Ollama.</s-paragraph>
+        {hasNextPage && (
+          <div style={{ marginTop: "12px" }}>
             <button
-              onClick={handleRunAll}
-              style={{ padding: "10px 20px", cursor: "pointer", background: "#008060", color: "#fff", border: "none", borderRadius: "4px", fontSize: "15px", fontWeight: "bold" }}
+              onClick={loadMore}
+              disabled={loadingMore}
+              style={{ padding: "8px 16px", cursor: loadingMore ? "not-allowed" : "pointer", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontSize: "14px" }}
             >
-              Start Generating All Alt Text
+              {loadingMore ? "Loading..." : "Load Next 50 Products"}
             </button>
-          )}
-          {running && (
-            <button
-              onClick={handleStop}
-              style={{ padding: "10px 20px", cursor: "pointer", background: "#d82c0d", color: "#fff", border: "none", borderRadius: "4px", fontSize: "15px" }}
-            >
-              Stop
-            </button>
-          )}
-          {done && (
-            <button
-              onClick={handleRunAll}
-              style={{ padding: "10px 20px", cursor: "pointer", background: "#008060", color: "#fff", border: "none", borderRadius: "4px", fontSize: "15px" }}
-            >
-              Run Again
-            </button>
-          )}
-        </div>
-
-        {(running || done) && (
-          <div style={{ marginTop: "24px", padding: "20px", background: "#f6f6f7", borderRadius: "8px" }}>
-            <div style={{ fontSize: "18px", fontWeight: "bold", marginBottom: "12px", color: done ? "#008060" : "#333" }}>
-              {done ? "✅ Complete!" : "⚙️ Running..."}
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px", marginBottom: "16px" }}>
-              <div style={{ textAlign: "center", padding: "12px", background: "#d4edda", borderRadius: "6px" }}>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#155724" }}>{progress.generated}</div>
-                <div style={{ fontSize: "13px", color: "#155724" }}>Generated</div>
-              </div>
-              <div style={{ textAlign: "center", padding: "12px", background: "#fff3cd", borderRadius: "6px" }}>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#856404" }}>{progress.skipped}</div>
-                <div style={{ fontSize: "13px", color: "#856404" }}>Already Had Alt Text</div>
-              </div>
-              <div style={{ textAlign: "center", padding: "12px", background: "#f8d7da", borderRadius: "6px" }}>
-                <div style={{ fontSize: "28px", fontWeight: "bold", color: "#721c24" }}>{progress.failed}</div>
-                <div style={{ fontSize: "13px", color: "#721c24" }}>Failed</div>
-              </div>
-            </div>
-            {running && (
-              <div style={{ fontSize: "13px", color: "#6d7175" }}>
-                Currently processing: <strong>{progress.current}</strong>
-              </div>
-            )}
           </div>
         )}
       </s-section>
+      {products.map((product) => (
+        <s-section key={product.id} heading={product.title}>
+          {product.media.nodes.filter(m => m.image).map((media) => {
+            const result = allResults[media.id];
+            const isGenerating = allGenerating[media.id];
+            const currentAlt = result?.altText || media.image.altText;
+            return (
+              <div key={media.id} style={{ display: "flex", gap: "16px", alignItems: "flex-start", marginBottom: "16px", padding: "12px", border: "1px solid #e1e3e5", borderRadius: "8px" }}>
+                <img src={media.image.url} alt={currentAlt || ""} style={{ width: "80px", height: "80px", objectFit: "cover", borderRadius: "4px" }} />
+                <div style={{ flex: 1 }}>
+                  <div style={{ marginBottom: "8px" }}>
+                    <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: currentAlt ? "#d4edda" : "#f8d7da", color: currentAlt ? "#155724" : "#721c24" }}>
+                      {currentAlt ? `Has alt text (${currentAlt.length} chars)` : "Missing alt text"}
+                    </span>
+                    {result?.success && <span style={{ marginLeft: "8px", padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#d4edda", color: "#155724" }}>✓ Saved</span>}
+                  </div>
+                  {currentAlt && <p style={{ fontSize: "13px", color: "#6d7175", margin: "4px 0 8px" }}>{currentAlt}</p>}
+                  {result?.error && <p style={{ color: "red", fontSize: "13px" }}>{result.error}</p>}
+                  <button
+                    onClick={() => generateOne(media.id, product.title, product.description, product.id)}
+                    disabled={isGenerating}
+                    style={{ padding: "6px 12px", cursor: isGenerating ? "not-allowed" : "pointer", background: currentAlt ? "#fff" : "#008060", color: currentAlt ? "#333" : "#fff", border: "1px solid #ccc", borderRadius: "4px" }}
+                  >
+                    {isGenerating ? "Generating..." : currentAlt ? "Regenerate" : "Generate Alt Text"}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </s-section>
+      ))}
+      {hasNextPage && (
+        <s-section>
+          <button
+            onClick={loadMore}
+            disabled={loadingMore}
+            style={{ padding: "8px 16px", cursor: loadingMore ? "not-allowed" : "pointer", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontSize: "14px" }}
+          >
+            {loadingMore ? "Loading..." : "Load Next 50 Products"}
+          </button>
+        </s-section>
+      )}
     </s-page>
   );
 }
