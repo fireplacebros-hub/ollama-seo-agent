@@ -1,6 +1,6 @@
 import { useLoaderData } from "react-router";
 import { authenticate } from "../shopify.server";
-import { useState } from "react";
+import { useState, useRef } from "react";
 
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
@@ -78,6 +78,9 @@ export default function SeoAltText() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [allResults, setAllResults] = useState({});
   const [allGenerating, setAllGenerating] = useState({});
+  const [bulkRunning, setBulkRunning] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
+  const bulkStopRef = useRef(false);
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -108,6 +111,43 @@ export default function SeoAltText() {
       setAllResults(prev => ({ ...prev, [mediaId]: { error: "Request failed" } }));
     }
     setAllGenerating(prev => ({ ...prev, [mediaId]: false }));
+  };
+
+  const generateAll = async () => {
+    setBulkRunning(true);
+    bulkStopRef.current = false;
+
+    let allProducts = [...products];
+    let cursor = endCursor;
+    let hasMore = hasNextPage;
+    while (hasMore) {
+      try {
+        const res = await fetch(`/app/seo-products-api?cursor=${cursor}`);
+        const data = await res.json();
+        allProducts = [...allProducts, ...data.products];
+        setProducts(allProducts);
+        hasMore = data.hasNextPage;
+        cursor = data.endCursor;
+        setHasNextPage(hasMore);
+        setEndCursor(cursor);
+      } catch {
+        break;
+      }
+    }
+
+    const queue = allProducts.flatMap(p =>
+      p.media.nodes.filter(m => m.image && !m.image.altText).map(m => ({ mediaId: m.id, productTitle: p.title, productDescription: p.description, productId: p.id }))
+    );
+    setBulkProgress({ done: 0, total: queue.length });
+
+    for (let i = 0; i < queue.length; i++) {
+      if (bulkStopRef.current) break;
+      const { mediaId, productTitle, productDescription, productId } = queue[i];
+      await generateOne(mediaId, productTitle, productDescription, productId);
+      setBulkProgress({ done: i + 1, total: queue.length });
+    }
+
+    setBulkRunning(false);
   };
 
   const allImages = products.flatMap(p => p.media.nodes.filter(m => m.image));
@@ -149,9 +189,35 @@ export default function SeoAltText() {
         </table>
       </s-section>
       <s-section>
-        <s-paragraph>Generate SEO alt text (80-125 chars) using Ollama. Load more products or Generate All to run in bulk.</s-paragraph>
-        {hasNextPage && (
-          <div style={{ marginTop: "12px" }}>
+        <s-paragraph>Generate SEO alt text (80-125 chars) using Ollama. Generate All loads remaining products automatically then runs through every missing image.</s-paragraph>
+        <div style={{ marginTop: "12px", display: "flex", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
+          {!bulkRunning ? (
+            <button
+              onClick={generateAll}
+              disabled={missingAlt === 0}
+              style={{ padding: "8px 20px", cursor: missingAlt === 0 ? "not-allowed" : "pointer", background: "#008060", color: "#fff", border: "none", borderRadius: "4px", fontSize: "14px", fontWeight: "600" }}
+            >
+              Generate All Missing ({missingAlt})
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={() => { bulkStopRef.current = true; }}
+                style={{ padding: "8px 20px", cursor: "pointer", background: "#d72c0d", color: "#fff", border: "none", borderRadius: "4px", fontSize: "14px", fontWeight: "600" }}
+              >
+                Stop
+              </button>
+              <div style={{ flex: 1, minWidth: "200px" }}>
+                <div style={{ fontSize: "13px", color: "#333", marginBottom: "4px" }}>
+                  Generating {bulkProgress.done} of {bulkProgress.total}...
+                </div>
+                <div style={{ height: "6px", background: "#e1e3e5", borderRadius: "3px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: "#008060", borderRadius: "3px", width: `${bulkProgress.total ? (bulkProgress.done / bulkProgress.total) * 100 : 0}%`, transition: "width 0.3s ease" }} />
+                </div>
+              </div>
+            </>
+          )}
+          {hasNextPage && !bulkRunning && (
             <button
               onClick={loadMore}
               disabled={loadingMore}
@@ -159,8 +225,8 @@ export default function SeoAltText() {
             >
               {loadingMore ? "Loading..." : "Load Next 50 Products"}
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </s-section>
       {products.map((product) => (
         <s-section key={product.id} heading={product.title}>
