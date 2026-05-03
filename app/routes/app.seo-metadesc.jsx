@@ -164,7 +164,17 @@ export default function SeoMetaDesc() {
     setBulkRunning(false);
   };
 
+  const alreadyDone = products.filter(p => p.seo?.description && !allResults[p.id]).length;
+  const generatedNow = Object.values(allResults).filter(r => r.success).length;
+  const failed = Object.values(allResults).filter(r => r.error).length;
   const missingMeta = products.filter(p => !p.seo?.description && !allResults[p.id]?.success).length;
+
+  const statCell = (label, value, color) => (
+    <td style={{ padding: "10px 20px", textAlign: "center", borderRight: "1px solid #e1e3e5" }}>
+      <div style={{ fontSize: "22px", fontWeight: "700", color }}>{value}</div>
+      <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>{label}</div>
+    </td>
+  );
 
   return (
     <s-page heading="SEO Tools">
@@ -174,7 +184,23 @@ export default function SeoMetaDesc() {
           <a href="/app/seo-metadesc" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#008060", borderBottom: "2px solid #008060", marginBottom: "-2px", textDecoration: "none", background: "none" }}>Meta Descriptions</a>
         </div>
       </s-section>
-      <s-section heading={`${missingMeta} of ${products.length} loaded products missing meta description`}>
+      <s-section>
+        <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e1e3e5", borderRadius: "8px", overflow: "hidden" }}>
+          <tbody>
+            <tr>
+              {statCell("Already complete", alreadyDone, "#008060")}
+              {statCell("Generated this session", generatedNow, "#008060")}
+              {statCell("Failed", failed, failed > 0 ? "#d72c0d" : "#6d7175")}
+              {statCell("Missing", missingMeta, missingMeta > 0 ? "#c4481a" : "#6d7175")}
+              <td style={{ padding: "10px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: "22px", fontWeight: "700", color: "#333" }}>{products.length}</div>
+                <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>Loaded{hasNextPage ? " (more available)" : ""}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </s-section>
+      <s-section>
         <s-paragraph>
           Generate SEO meta descriptions (150-160 chars) for each product using Ollama.
           These appear as the snippet under your link in Google search results and directly affect click-through rate.
