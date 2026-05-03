@@ -19,6 +19,7 @@ export default function App() {
         <s-link href="/app">Home</s-link>
         <s-link href="/app/seo-alttext">SEO: Alt Text</s-link>
         <s-link href="/app/seo-metadesc">SEO: Meta Descriptions</s-link>
+        <s-link href="/app/seo-runner">SEO: Run Both</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>

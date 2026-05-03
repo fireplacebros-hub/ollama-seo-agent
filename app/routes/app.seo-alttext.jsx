@@ -168,8 +168,9 @@ export default function SeoAltText() {
     <s-page heading="SEO Tools">
       <s-section>
         <div style={{ display: "flex", gap: "0", borderBottom: "2px solid #e1e3e5", marginBottom: "4px" }}>
-          <a href="/app/seo-alttext" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#008060", borderBottom: "2px solid #008060", marginBottom: "-2px", textDecoration: "none", background: "none" }}>Alt Text</a>
+          <a href="/app/seo-alttext"  style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#008060", borderBottom: "2px solid #008060", marginBottom: "-2px", textDecoration: "none", background: "none" }}>Alt Text</a>
           <a href="/app/seo-metadesc" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#6d7175", borderBottom: "2px solid transparent", marginBottom: "-2px", textDecoration: "none" }}>Meta Descriptions</a>
+          <a href="/app/seo-runner"   style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#6d7175", borderBottom: "2px solid transparent", marginBottom: "-2px", textDecoration: "none" }}>Run Both</a>
         </div>
       </s-section>
       <s-section>
