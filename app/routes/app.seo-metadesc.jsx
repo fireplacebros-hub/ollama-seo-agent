@@ -61,7 +61,8 @@ Good example (155 chars): Litedeer Latitude 48-inch wall-mounted electric firepl
   if (!metaDesc) return { error: "Ollama returned empty response" };
   if (metaDesc.length < 145) return { error: `Meta description too short (${metaDesc.length} chars, need 150-160). Try regenerating.` };
   if (metaDesc.length > 160) {
-    metaDesc = metaDesc.slice(0, 157) + "...";
+    const cut = metaDesc.slice(0, 157);
+    metaDesc = cut.slice(0, cut.lastIndexOf(" ")) + "...";
   }
 
   try {
