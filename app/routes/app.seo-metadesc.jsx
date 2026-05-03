@@ -36,7 +36,19 @@ export async function action({ request }) {
       headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
       body: JSON.stringify({
         model: "llama3.1:8b",
-        prompt: `You are an SEO specialist. Write a meta description for a product page. Product: ${productTitle}. Description: ${productDescription || "None"}. Rules: 150-160 characters total, include the product name naturally, highlight the key benefit or unique feature, write in a compelling way that makes someone want to click, return ONLY the meta description on a single line with no quotes and no extra explanation.`,
+        prompt: `You are an SEO copywriter. Write a meta description for this product page.
+
+Product title: ${productTitle}
+Product description: ${productDescription || "None provided"}
+
+STRICT RULES:
+- Total length must be 150-160 characters. Count every character including spaces before submitting.
+- Include the product name or a key spec from the title (size, wattage, BTU, material, model number).
+- Mention at least one concrete feature or benefit (not vague phrases like "perfect for any room" or "experience the ultimate").
+- End with a short action phrase or differentiator.
+- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.
+
+Good example (155 chars): Litedeer Latitude 48-inch wall-mounted electric fireplace with WiFi app, 5 flame colors, crackling sounds, and 1500W heat for up to 400 sq ft.`,
         stream: false,
       }),
     });
@@ -47,7 +59,7 @@ export async function action({ request }) {
   }
 
   if (!metaDesc) return { error: "Ollama returned empty response" };
-  if (metaDesc.length < 120) return { error: `Meta description too short (${metaDesc.length} chars). Try regenerating.` };
+  if (metaDesc.length < 145) return { error: `Meta description too short (${metaDesc.length} chars, need 150-160). Try regenerating.` };
   if (metaDesc.length > 160) {
     metaDesc = metaDesc.slice(0, 157) + "...";
   }
