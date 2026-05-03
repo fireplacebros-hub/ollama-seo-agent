@@ -167,7 +167,13 @@ export default function SeoMetaDesc() {
   const missingMeta = products.filter(p => !p.seo?.description && !allResults[p.id]?.success).length;
 
   return (
-    <s-page heading="SEO Meta Description Generator">
+    <s-page heading="SEO Tools">
+      <s-section>
+        <div style={{ display: "flex", gap: "0", borderBottom: "2px solid #e1e3e5", marginBottom: "4px" }}>
+          <a href="/app/seo-alttext" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#6d7175", borderBottom: "2px solid transparent", marginBottom: "-2px", textDecoration: "none" }}>Alt Text</a>
+          <a href="/app/seo-metadesc" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#008060", borderBottom: "2px solid #008060", marginBottom: "-2px", textDecoration: "none", background: "none" }}>Meta Descriptions</a>
+        </div>
+      </s-section>
       <s-section heading={`${missingMeta} of ${products.length} loaded products missing meta description`}>
         <s-paragraph>
           Generate SEO meta descriptions (150-160 chars) for each product using Ollama.

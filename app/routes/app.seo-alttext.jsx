@@ -114,7 +114,13 @@ export default function SeoAltText() {
   const missingAlt = products.reduce((acc, p) => acc + p.media.nodes.filter(m => m.image && !m.image.altText && !allResults[m.id]?.success).length, 0);
 
   return (
-    <s-page heading="SEO Alt Text Generator">
+    <s-page heading="SEO Tools">
+      <s-section>
+        <div style={{ display: "flex", gap: "0", borderBottom: "2px solid #e1e3e5", marginBottom: "4px" }}>
+          <a href="/app/seo-alttext" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#008060", borderBottom: "2px solid #008060", marginBottom: "-2px", textDecoration: "none", background: "none" }}>Alt Text</a>
+          <a href="/app/seo-metadesc" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#6d7175", borderBottom: "2px solid transparent", marginBottom: "-2px", textDecoration: "none" }}>Meta Descriptions</a>
+        </div>
+      </s-section>
       <s-section heading={`${missingAlt} of ${totalImages} loaded images missing alt text`}>
         <s-paragraph>Showing 50 products at a time. Click Load More to see more. Generate SEO alt text (80-125 chars) using Ollama.</s-paragraph>
         {hasNextPage && (
