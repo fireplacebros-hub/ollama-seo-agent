@@ -110,8 +110,19 @@ export default function SeoAltText() {
     setAllGenerating(prev => ({ ...prev, [mediaId]: false }));
   };
 
-  const totalImages = products.reduce((acc, p) => acc + p.media.nodes.filter(m => m.image).length, 0);
-  const missingAlt = products.reduce((acc, p) => acc + p.media.nodes.filter(m => m.image && !m.image.altText && !allResults[m.id]?.success).length, 0);
+  const allImages = products.flatMap(p => p.media.nodes.filter(m => m.image));
+  const totalImages = allImages.length;
+  const alreadyDone = allImages.filter(m => m.image.altText && !allResults[m.id]).length;
+  const generatedNow = Object.values(allResults).filter(r => r.success).length;
+  const failed = Object.values(allResults).filter(r => r.error).length;
+  const missingAlt = allImages.filter(m => !m.image.altText && !allResults[m.id]?.success).length;
+
+  const statCell = (label, value, color) => (
+    <td style={{ padding: "10px 20px", textAlign: "center", borderRight: "1px solid #e1e3e5" }}>
+      <div style={{ fontSize: "22px", fontWeight: "700", color }}>{value}</div>
+      <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>{label}</div>
+    </td>
+  );
 
   return (
     <s-page heading="SEO Tools">
@@ -121,8 +132,24 @@ export default function SeoAltText() {
           <a href="/app/seo-metadesc" style={{ padding: "10px 24px", fontWeight: "600", fontSize: "14px", color: "#6d7175", borderBottom: "2px solid transparent", marginBottom: "-2px", textDecoration: "none" }}>Meta Descriptions</a>
         </div>
       </s-section>
-      <s-section heading={`${missingAlt} of ${totalImages} loaded images missing alt text`}>
-        <s-paragraph>Showing 50 products at a time. Click Load More to see more. Generate SEO alt text (80-125 chars) using Ollama.</s-paragraph>
+      <s-section>
+        <table style={{ width: "100%", borderCollapse: "collapse", border: "1px solid #e1e3e5", borderRadius: "8px", overflow: "hidden" }}>
+          <tbody>
+            <tr>
+              {statCell("Already complete", alreadyDone, "#008060")}
+              {statCell("Generated this session", generatedNow, "#008060")}
+              {statCell("Failed", failed, failed > 0 ? "#d72c0d" : "#6d7175")}
+              {statCell("Missing", missingAlt, missingAlt > 0 ? "#c4481a" : "#6d7175")}
+              <td style={{ padding: "10px 20px", textAlign: "center" }}>
+                <div style={{ fontSize: "22px", fontWeight: "700", color: "#333" }}>{totalImages}</div>
+                <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>Images loaded{hasNextPage ? " (more available)" : ""}</div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </s-section>
+      <s-section>
+        <s-paragraph>Generate SEO alt text (80-125 chars) using Ollama. Load more products or Generate All to run in bulk.</s-paragraph>
         {hasNextPage && (
           <div style={{ marginTop: "12px" }}>
             <button
