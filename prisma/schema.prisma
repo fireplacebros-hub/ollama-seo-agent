@@ -13,6 +13,15 @@ datasource db {
   url      = "file:dev.sqlite"
 }
 
+model CompressedImage {
+  id        String   @id @default(cuid())
+  shop      String
+  mediaId   String
+  createdAt DateTime @default(now())
+
+  @@unique([shop, mediaId])
+}
+
 model Session {
   id            String    @id
   shop          String
