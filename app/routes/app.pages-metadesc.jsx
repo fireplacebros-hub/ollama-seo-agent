@@ -195,15 +195,15 @@ export default function PagesMetaDesc() {
     form.append("resourceType", resourceType);
     try {
       const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const text = await res.text();
       let data;
       try {
-        data = await res.json();
+        data = JSON.parse(text);
       } catch {
-        const text = await res.text().catch(() => "");
-        if (res.status === 401 || text.includes("DOCTYPE")) {
+        if (text.includes("<") || res.status === 401) {
           setResults(prev => ({ ...prev, [item.id]: { error: "Session expired — reload the app page to re-authenticate." } }));
         } else {
-          setResults(prev => ({ ...prev, [item.id]: { error: `Server error (${res.status})` } }));
+          setResults(prev => ({ ...prev, [item.id]: { error: `Server error (${res.status}): ${text.slice(0, 120)}` } }));
         }
         setGenerating(prev => ({ ...prev, [item.id]: false }));
         return;
