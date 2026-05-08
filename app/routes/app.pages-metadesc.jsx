@@ -77,7 +77,7 @@ export async function action({ request }) {
     } catch (e) {
       console.error("[pages-metadesc] reauth session clear error:", e.message);
     }
-    return redirect(`/auth?shop=${session.shop}`);
+    return Response.json({ redirectUrl: `/auth?shop=${session.shop}` });
   }
 
   if (intent === "generate") {
@@ -251,8 +251,15 @@ export default function PagesMetaDesc() {
     setReauthLoading(true);
     const form = new FormData();
     form.append("_intent", "reauth");
-    await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
-    window.location.reload();
+    try {
+      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const data = await res.json();
+      if (data.redirectUrl) {
+        window.top.location.href = `https://ollama-seo-agent.onrender.com${data.redirectUrl}`;
+        return;
+      }
+    } catch { /* fall through */ }
+    window.top.location.reload();
   };
 
   const loadMorePages = async () => {
