@@ -6,8 +6,8 @@ export async function loader({ request }) {
   const cursor = url.searchParams.get("cursor");
 
   const query = cursor
-    ? `{ collections(first: 50, after: "${cursor}") { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
-    : `{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`;
+    ? `{ collections(first: 50, after: "${cursor}") { pageInfo { hasNextPage endCursor } nodes { id title handle description metafield(namespace: "global", key: "description_tag") { id value } } } }`
+    : `{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle description metafield(namespace: "global", key: "description_tag") { id value } } } }`;
 
   const response = await admin.graphql(query);
   const { data } = await response.json();

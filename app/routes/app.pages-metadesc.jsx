@@ -16,7 +16,7 @@ export async function loader({ request }) {
 
   try {
     const res = await admin.graphql(
-      `{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
+      `{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle bodySummary metafield(namespace: "global", key: "description_tag") { id value } } } }`
     );
     const json = await res.json();
     if (json.data?.pages) {
@@ -38,7 +38,7 @@ export async function loader({ request }) {
 
   try {
     const res = await admin.graphql(
-      `{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
+      `{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle description metafield(namespace: "global", key: "description_tag") { id value } } } }`
     );
     const json = await res.json();
     if (json.data?.collections) {
@@ -64,6 +64,39 @@ export async function loader({ request }) {
 export async function action({ request }) {
   const { admin } = await authenticate.admin(request);
   const formData = await request.formData();
+  const intent = formData.get("_intent");
+
+  if (intent === "generate") {
+    const title = formData.get("title") || "";
+    const body = formData.get("body") || "";
+    const resourceType = formData.get("resourceType") || "page";
+    const isCollection = resourceType === "collection";
+
+    try {
+      const ollamaRes = await fetch("https://impose-eatery-goofball.ngrok-free.dev/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({
+          model: "llama3.1:8b",
+          prompt: isCollection
+            ? `You are an SEO copywriter. Write a meta description for this product collection page.\n\nCollection name: ${title}\nCollection description: ${body || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what products are in this collection.\n- End with a short action phrase.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`
+            : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${title}\nPage content summary: ${body || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`,
+          stream: false,
+        }),
+      });
+      const ollamaData = await ollamaRes.json();
+      let generated = ollamaData.response?.trim().split("\n")[0].replace(/^["\']|["\']$/g, "") || "";
+      if (generated.length > MAX_CHARS) {
+        const cut = generated.slice(0, MAX_CHARS - 3);
+        generated = cut.slice(0, cut.lastIndexOf(" ")) + "...";
+      }
+      if (!generated) return Response.json({ error: "Ollama returned empty response" });
+      return Response.json({ generated });
+    } catch (e) {
+      return Response.json({ error: "Ollama error: " + e.message });
+    }
+  }
+
   const ownerId = formData.get("ownerId");
   const value = (formData.get("value") || "").trim();
 
@@ -117,10 +150,35 @@ export default function PagesMetaDesc() {
 
   const [drafts, setDrafts] = useState({});
   const [saving, setSaving] = useState({});
+  const [generating, setGenerating] = useState({});
   const [results, setResults] = useState({});
 
   const getDraft = (item) =>
     drafts[item.id] !== undefined ? drafts[item.id] : (item.metafield?.value || "");
+
+  const generateOne = async (item) => {
+    const resourceType = tab === "collections" ? "collection" : "page";
+    const body = item.bodySummary || item.description || "";
+    setGenerating(prev => ({ ...prev, [item.id]: true }));
+    setResults(prev => ({ ...prev, [item.id]: undefined }));
+    const form = new FormData();
+    form.append("_intent", "generate");
+    form.append("title", item.title);
+    form.append("body", body);
+    form.append("resourceType", resourceType);
+    try {
+      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const data = await res.json();
+      if (data.generated) {
+        setDrafts(prev => ({ ...prev, [item.id]: data.generated }));
+      } else {
+        setResults(prev => ({ ...prev, [item.id]: { error: data.error || "AI returned empty response" } }));
+      }
+    } catch {
+      setResults(prev => ({ ...prev, [item.id]: { error: "Request failed" } }));
+    }
+    setGenerating(prev => ({ ...prev, [item.id]: false }));
+  };
 
   const saveOne = async (item) => {
     const value = (drafts[item.id] ?? item.metafield?.value ?? "").trim();
@@ -229,6 +287,7 @@ export default function PagesMetaDesc() {
         const draft = getDraft(item);
         const result = results[item.id];
         const isSaving = saving[item.id];
+        const isGenerating = generating[item.id];
         const isOver = draft.length > MAX_CHARS;
         const charCountColor = draft.length === 0 ? "#6d7175" : isOver ? "#d72c0d" : draft.length >= 120 ? "#008060" : "#856404";
         const displayValue = result?.success ? result.value : item.metafield?.value;
@@ -268,12 +327,23 @@ export default function PagesMetaDesc() {
               <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
                 {result?.error && <span style={{ fontSize: "12px", color: "#d72c0d" }}>{result.error}</span>}
                 <button
-                  onClick={() => saveOne(item)}
-                  disabled={isSaving || isOver || !draft.trim()}
+                  onClick={() => generateOne(item)}
+                  disabled={isGenerating || isSaving}
                   style={{
-                    padding: "6px 18px", cursor: isSaving || isOver || !draft.trim() ? "not-allowed" : "pointer",
+                    padding: "6px 18px", cursor: isGenerating || isSaving ? "not-allowed" : "pointer",
+                    background: "#fff", color: "#008060", border: "1px solid #008060", borderRadius: "4px",
+                    fontSize: "13px", fontWeight: "600", opacity: isGenerating || isSaving ? 0.5 : 1,
+                  }}
+                >
+                  {isGenerating ? "Generating..." : "Generate with AI"}
+                </button>
+                <button
+                  onClick={() => saveOne(item)}
+                  disabled={isSaving || isGenerating || isOver || !draft.trim()}
+                  style={{
+                    padding: "6px 18px", cursor: isSaving || isGenerating || isOver || !draft.trim() ? "not-allowed" : "pointer",
                     background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
-                    fontSize: "13px", fontWeight: "600", opacity: isSaving || isOver || !draft.trim() ? 0.5 : 1,
+                    fontSize: "13px", fontWeight: "600", opacity: isSaving || isGenerating || isOver || !draft.trim() ? 0.5 : 1,
                   }}
                 >
                   {isSaving ? "Saving..." : "Save"}
