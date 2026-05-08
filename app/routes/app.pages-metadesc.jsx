@@ -1,8 +1,6 @@
-import { useLoaderData } from "react-router";
+import { useLoaderData, useFetcher } from "react-router";
 import { authenticate, sessionStorage } from "../shopify.server";
 import { useState } from "react";
-import { redirect } from "react-router";
-import { useAppBridge } from "@shopify/app-bridge-react";
 
 const MAX_CHARS = 155;
 
@@ -89,36 +87,6 @@ export async function action({ request }) {
     return Response.json({ redirectUrl: `/auth?shop=${session.shop}` });
   }
 
-  if (intent === "generate") {
-    const title = formData.get("title") || "";
-    const body = formData.get("body") || "";
-    const resourceType = formData.get("resourceType") || "page";
-    const isCollection = resourceType === "collection";
-
-    try {
-      const ollamaRes = await fetch("https://impose-eatery-goofball.ngrok-free.dev/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
-        body: JSON.stringify({
-          model: "llama3.1:8b",
-          prompt: isCollection
-            ? `You are an SEO copywriter. Write a meta description for this product collection page.\n\nCollection name: ${title}\nCollection description: ${body || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what products are in this collection.\n- End with a short action phrase.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`
-            : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${title}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`,
-          stream: false,
-        }),
-      });
-      const ollamaData = await ollamaRes.json();
-      let generated = ollamaData.response?.trim().split("\n")[0].replace(/^["\']|["\']$/g, "") || "";
-      if (generated.length > MAX_CHARS) {
-        const cut = generated.slice(0, MAX_CHARS - 3);
-        generated = cut.slice(0, cut.lastIndexOf(" ")) + "...";
-      }
-      if (!generated) return Response.json({ error: "Ollama returned empty response" });
-      return Response.json({ generated });
-    } catch (e) {
-      return Response.json({ error: `Ollama unreachable: ${e.message} — is the ngrok tunnel running?` });
-    }
-  }
 
   const ownerId = formData.get("ownerId");
   const value = (formData.get("value") || "").trim();
@@ -158,15 +126,7 @@ export async function action({ request }) {
 
 export default function PagesMetaDesc() {
   const initial = useLoaderData();
-  const shopify = useAppBridge();
-
-  const authFetch = async (url, options = {}) => {
-    const token = await shopify.idToken();
-    return fetch(url, {
-      ...options,
-      headers: { ...(options.headers || {}), "Authorization": `Bearer ${token}` },
-    });
-  };
+  const saveFetcher = useFetcher();
 
   const [tab, setTab] = useState("pages");
 
@@ -199,25 +159,12 @@ export default function PagesMetaDesc() {
     setGenerating(prev => ({ ...prev, [item.id]: true }));
     setResults(prev => ({ ...prev, [item.id]: undefined }));
     const form = new FormData();
-    form.append("_intent", "generate");
     form.append("title", item.title);
     form.append("body", body);
     form.append("resourceType", resourceType);
     try {
-      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
-      const text = await res.text();
-      let data;
-      try {
-        data = JSON.parse(text);
-      } catch {
-        if (text.includes("<") || res.status === 401) {
-          setResults(prev => ({ ...prev, [item.id]: { error: "Session expired — reload the app page to re-authenticate." } }));
-        } else {
-          setResults(prev => ({ ...prev, [item.id]: { error: `Server error (${res.status}): ${text.slice(0, 120)}` } }));
-        }
-        setGenerating(prev => ({ ...prev, [item.id]: false }));
-        return;
-      }
+      const res = await fetch("/app/generate-meta-api", { method: "POST", body: form });
+      const data = await res.json();
       if (data.generated) {
         setDrafts(prev => ({ ...prev, [item.id]: data.generated }));
       } else {
@@ -261,35 +208,30 @@ export default function PagesMetaDesc() {
     setSavingAll(false);
   };
 
-  const saveOne = async (item) => {
+  const saveOne = (item) => new Promise((resolve) => {
     const value = (drafts[item.id] ?? item.metafield?.value ?? "").trim();
     setSaving(prev => ({ ...prev, [item.id]: true }));
-    const form = new FormData();
-    form.append("ownerId", item.id);
-    form.append("value", value);
-    try {
-      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
-      const data = await res.json();
-      setResults(prev => ({ ...prev, [item.id]: data }));
-    } catch {
-      setResults(prev => ({ ...prev, [item.id]: { error: "Request failed" } }));
-    }
-    setSaving(prev => ({ ...prev, [item.id]: false }));
-  };
-
-  const handleReauth = async () => {
-    setReauthLoading(true);
-    const form = new FormData();
-    form.append("_intent", "reauth");
-    try {
-      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
-      const data = await res.json();
-      if (data.redirectUrl) {
-        window.top.location.href = `https://ollama-seo-agent.onrender.com${data.redirectUrl}`;
-        return;
+    saveFetcher.submit(
+      { ownerId: item.id, value },
+      { method: "POST", action: "/app/pages-metadesc" }
+    );
+    const check = setInterval(() => {
+      if (saveFetcher.state === "idle") {
+        clearInterval(check);
+        const data = saveFetcher.data || { error: "No response" };
+        setResults(prev => ({ ...prev, [item.id]: data }));
+        setSaving(prev => ({ ...prev, [item.id]: false }));
+        resolve(data);
       }
-    } catch { /* fall through */ }
-    window.top.location.reload();
+    }, 100);
+  });
+
+  const handleReauth = () => {
+    saveFetcher.submit(
+      { _intent: "reauth" },
+      { method: "POST", action: "/app/pages-metadesc" }
+    );
+    setReauthLoading(true);
   };
 
   const loadMorePages = async () => {
