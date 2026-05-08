@@ -38,7 +38,7 @@ export default function ImageCompress() {
   const loadMore = async () => {
     setLoadingMore(true);
     try {
-      const res = await fetch(`/app/image-compress?cursor=${endCursor}`);
+      const res = await fetch(`/app/seo-products-api?cursor=${endCursor}`);
       const data = await res.json();
       setProducts(prev => [...prev, ...data.products]);
       setHasNextPage(data.hasNextPage);
@@ -75,7 +75,7 @@ export default function ImageCompress() {
     let hasMore = hasNextPage;
     while (hasMore) {
       try {
-        const res = await fetch(`/app/image-compress?cursor=${cursor}`);
+        const res = await fetch(`/app/seo-products-api?cursor=${cursor}`);
         const data = await res.json();
         allProducts = [...allProducts, ...data.products];
         setProducts(allProducts);
