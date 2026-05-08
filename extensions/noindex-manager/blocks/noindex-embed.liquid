@@ -1,0 +1,13 @@
+{% schema %}
+{
+  "name": "Noindex Meta Tag",
+  "target": "head",
+  "limit": 1
+}
+{% endschema %}
+{%- if template.name == 'collection' -%}
+  {%- assign noindex_enabled = collection.metafields.noindex_manager.enabled.value -%}
+  {%- if noindex_enabled -%}
+    <meta name="robots" content="noindex">
+  {%- endif -%}
+{%- endif -%}

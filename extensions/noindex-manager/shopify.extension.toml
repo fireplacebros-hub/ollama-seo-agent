@@ -1,0 +1,4 @@
+api_version = "2025-10"
+name = "Noindex Manager"
+handle = "noindex-manager"
+type = "theme_app_extension"
