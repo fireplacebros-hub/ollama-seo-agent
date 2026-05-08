@@ -167,6 +167,8 @@ export default function PagesMetaDesc() {
   const [generating, setGenerating] = useState({});
   const [generatingAll, setGeneratingAll] = useState(false);
   const [generateAllProgress, setGenerateAllProgress] = useState({ done: 0, total: 0 });
+  const [savingAll, setSavingAll] = useState(false);
+  const [saveAllProgress, setSaveAllProgress] = useState({ done: 0, total: 0 });
   const [results, setResults] = useState({});
   const [reauthLoading, setReauthLoading] = useState(false);
 
@@ -211,6 +213,22 @@ export default function PagesMetaDesc() {
       setGenerateAllProgress(prev => ({ ...prev, done: prev.done + 1 }));
     }
     setGeneratingAll(false);
+  };
+
+  const saveAll = async () => {
+    const currentItems = tab === "pages" ? pages : collections;
+    const toSave = currentItems.filter(i => {
+      const draft = drafts[i.id] !== undefined ? drafts[i.id] : (i.metafield?.value || "");
+      return draft.trim() && draft.length <= MAX_CHARS;
+    });
+    if (toSave.length === 0) return;
+    setSavingAll(true);
+    setSaveAllProgress({ done: 0, total: toSave.length });
+    for (const item of toSave) {
+      await saveOne(item);
+      setSaveAllProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    setSavingAll(false);
   };
 
   const saveOne = async (item) => {
@@ -268,6 +286,10 @@ export default function PagesMetaDesc() {
   const missingWithoutDraft = items.filter(i => {
     const hasMeta = results[i.id]?.success ? results[i.id].value : i.metafield?.value;
     return !hasMeta && !drafts[i.id];
+  }).length;
+  const savableCount = items.filter(i => {
+    const draft = drafts[i.id] !== undefined ? drafts[i.id] : (i.metafield?.value || "");
+    return draft.trim() && draft.length <= MAX_CHARS;
   }).length;
 
   const tabStyle = (t) => ({
@@ -360,6 +382,20 @@ export default function PagesMetaDesc() {
                 ? `Generating... (${generateAllProgress.done}/${generateAllProgress.total})`
                 : `Generate All Missing (${missingWithoutDraft})`}
             </button>
+            <button
+              onClick={saveAll}
+              disabled={savingAll || generatingAll || savableCount === 0}
+              style={{
+                padding: "8px 20px", cursor: savingAll || generatingAll || savableCount === 0 ? "not-allowed" : "pointer",
+                background: "#fff", color: "#008060", border: "1px solid #008060", borderRadius: "4px",
+                fontSize: "13px", fontWeight: "600", opacity: savingAll || generatingAll || savableCount === 0 ? 0.6 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {savingAll
+                ? `Saving... (${saveAllProgress.done}/${saveAllProgress.total})`
+                : `Save All (${savableCount})`}
+            </button>
           )}
         </div>
       </s-section>
@@ -420,11 +456,11 @@ export default function PagesMetaDesc() {
                 </button>
                 <button
                   onClick={() => saveOne(item)}
-                  disabled={isSaving || isGenerating || isOver || !draft.trim()}
+                  disabled={isSaving || isGenerating || isOver || !draft.trim() || savingAll}
                   style={{
-                    padding: "6px 18px", cursor: isSaving || isGenerating || isOver || !draft.trim() ? "not-allowed" : "pointer",
+                    padding: "6px 18px", cursor: isSaving || isGenerating || isOver || !draft.trim() || savingAll ? "not-allowed" : "pointer",
                     background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
-                    fontSize: "13px", fontWeight: "600", opacity: isSaving || isGenerating || isOver || !draft.trim() ? 0.5 : 1,
+                    fontSize: "13px", fontWeight: "600", opacity: isSaving || isGenerating || isOver || !draft.trim() || savingAll ? 0.5 : 1,
                   }}
                 >
                   {isSaving ? "Saving..." : "Save"}
