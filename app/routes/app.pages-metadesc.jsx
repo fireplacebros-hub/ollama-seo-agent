@@ -99,114 +99,6 @@ export async function action({ request }) {
   }
 }
 
-function charColor(len) {
-  if (len === 0) return "#6d7175";
-  if (len <= MAX_CHARS) return "#008060";
-  return "#d72c0d";
-}
-
-function ItemRow({ item, onSaved }) {
-  const existing = item.metafield?.value || "";
-  const [open, setOpen] = useState(false);
-  const [draft, setDraft] = useState(existing);
-  const [saving, setSaving] = useState(false);
-  const [result, setResult] = useState(null);
-
-  const currentValue = result?.value ?? existing;
-  const isOver = draft.length > MAX_CHARS;
-
-  const save = async () => {
-    setSaving(true);
-    const form = new FormData();
-    form.append("ownerId", item.id);
-    form.append("value", draft);
-    try {
-      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
-      const data = await res.json();
-      if (data.success) {
-        setResult(data);
-        setOpen(false);
-        onSaved(item.id, data.value);
-      } else {
-        setResult({ error: data.error });
-      }
-    } catch {
-      setResult({ error: "Request failed" });
-    }
-    setSaving(false);
-  };
-
-  return (
-    <div style={{ padding: "14px 16px", border: "1px solid #e1e3e5", borderRadius: "8px", marginBottom: "10px" }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: "12px", flexWrap: "wrap" }}>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontWeight: "600", fontSize: "14px", color: "#202223" }}>{item.title}</div>
-          <div style={{ fontSize: "12px", color: "#6d7175", marginTop: "2px" }}>/{item.handle}</div>
-        </div>
-        <div style={{ display: "flex", gap: "8px", alignItems: "center", flexShrink: 0 }}>
-          {currentValue ? (
-            <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#d4edda", color: "#155724" }}>
-              {currentValue.length} chars
-            </span>
-          ) : (
-            <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#f8d7da", color: "#721c24" }}>
-              Missing
-            </span>
-          )}
-          {result?.success && (
-            <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#d4edda", color: "#155724" }}>✓ Saved</span>
-          )}
-          <button
-            onClick={() => { setOpen(o => !o); setDraft(currentValue); setResult(null); }}
-            style={{ padding: "5px 12px", cursor: "pointer", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontSize: "13px" }}
-          >
-            {open ? "Cancel" : currentValue ? "Edit" : "Add"}
-          </button>
-        </div>
-      </div>
-
-      {!open && currentValue && (
-        <p style={{ fontSize: "13px", color: "#6d7175", margin: "8px 0 0", fontStyle: "italic" }}>{currentValue}</p>
-      )}
-
-      {open && (
-        <div style={{ marginTop: "12px" }}>
-          <textarea
-            value={draft}
-            onChange={e => setDraft(e.target.value)}
-            placeholder="Write a meta description..."
-            rows={3}
-            style={{
-              width: "100%", boxSizing: "border-box", padding: "8px 10px",
-              border: `1px solid ${isOver ? "#d72c0d" : "#ccc"}`, borderRadius: "4px",
-              fontSize: "13px", resize: "vertical", fontFamily: "inherit",
-            }}
-          />
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "6px" }}>
-            <span style={{ fontSize: "12px", color: charColor(draft.length), fontWeight: "600" }}>
-              {draft.length} / {MAX_CHARS}
-              {isOver ? ` (${draft.length - MAX_CHARS} over)` : ""}
-            </span>
-            <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-              {result?.error && <span style={{ fontSize: "12px", color: "#d72c0d" }}>{result.error}</span>}
-              <button
-                onClick={save}
-                disabled={saving || isOver || draft.trim() === ""}
-                style={{
-                  padding: "6px 16px", cursor: saving || isOver || !draft.trim() ? "not-allowed" : "pointer",
-                  background: "#008060", color: "#fff", border: "none", borderRadius: "4px", fontSize: "13px", fontWeight: "600",
-                  opacity: saving || isOver || !draft.trim() ? 0.6 : 1,
-                }}
-              >
-                {saving ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 export default function PagesMetaDesc() {
   const initial = useLoaderData();
@@ -223,9 +115,28 @@ export default function PagesMetaDesc() {
   const [collectionsCursor, setCollectionsCursor] = useState(initial.collections.endCursor);
   const [collectionsLoading, setCollectionsLoading] = useState(false);
 
-  const [savedValues, setSavedValues] = useState({});
+  const [drafts, setDrafts] = useState({});
+  const [saving, setSaving] = useState({});
+  const [results, setResults] = useState({});
 
-  const handleSaved = (id, value) => setSavedValues(prev => ({ ...prev, [id]: value }));
+  const getDraft = (item) =>
+    drafts[item.id] !== undefined ? drafts[item.id] : (item.metafield?.value || "");
+
+  const saveOne = async (item) => {
+    const value = (drafts[item.id] ?? item.metafield?.value ?? "").trim();
+    setSaving(prev => ({ ...prev, [item.id]: true }));
+    const form = new FormData();
+    form.append("ownerId", item.id);
+    form.append("value", value);
+    try {
+      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const data = await res.json();
+      setResults(prev => ({ ...prev, [item.id]: data }));
+    } catch {
+      setResults(prev => ({ ...prev, [item.id]: { error: "Request failed" } }));
+    }
+    setSaving(prev => ({ ...prev, [item.id]: false }));
+  };
 
   const loadMorePages = async () => {
     setPagesLoading(true);
@@ -253,7 +164,7 @@ export default function PagesMetaDesc() {
 
   const tabError = tab === "pages" ? initial.pages.error : initial.collections.error;
   const items = tab === "pages" ? pages : collections;
-  const hasMeta = items.filter(i => savedValues[i.id] !== undefined ? savedValues[i.id] : i.metafield?.value).length;
+  const hasMeta = items.filter(i => results[i.id]?.success ? results[i.id].value : i.metafield?.value).length;
   const missing = items.length - hasMeta;
 
   const tabStyle = (t) => ({
@@ -310,25 +221,80 @@ export default function PagesMetaDesc() {
       <s-section>
         <s-paragraph>
           Set the meta description for each {tab === "pages" ? "page" : "collection"} — this appears as the snippet in Google search results.
-          Aim for 120–155 characters. Saved to the <code>global.description_tag</code> metafield.
+          Aim for 120–155 characters. Saved to the global.description_tag metafield.
         </s-paragraph>
       </s-section>
 
-      <s-section>
-        {items.map(item => (
-          <ItemRow key={item.id} item={item} onSaved={handleSaved} />
-        ))}
+      {items.map(item => {
+        const draft = getDraft(item);
+        const result = results[item.id];
+        const isSaving = saving[item.id];
+        const isOver = draft.length > MAX_CHARS;
+        const charCountColor = draft.length === 0 ? "#6d7175" : isOver ? "#d72c0d" : draft.length >= 120 ? "#008060" : "#856404";
+        const displayValue = result?.success ? result.value : item.metafield?.value;
 
-        {(tab === "pages" ? pagesHasNext : collectionsHasNext) && (
+        return (
+          <s-section key={item.id} heading={item.title}>
+            <div style={{ marginBottom: "8px", display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: "12px", color: "#6d7175" }}>/{item.handle}</span>
+              {displayValue ? (
+                <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#d4edda", color: "#155724" }}>
+                  Has meta description ({displayValue.length} chars)
+                </span>
+              ) : (
+                <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#f8d7da", color: "#721c24" }}>
+                  Missing meta description
+                </span>
+              )}
+              {result?.success && (
+                <span style={{ padding: "2px 8px", borderRadius: "4px", fontSize: "12px", background: "#d4edda", color: "#155724" }}>✓ Saved</span>
+              )}
+            </div>
+            <textarea
+              value={draft}
+              onChange={e => setDrafts(prev => ({ ...prev, [item.id]: e.target.value }))}
+              placeholder="Write a meta description (120–155 characters)..."
+              rows={3}
+              style={{
+                width: "100%", boxSizing: "border-box", padding: "8px 10px",
+                border: `1px solid ${isOver ? "#d72c0d" : "#ccc"}`, borderRadius: "4px",
+                fontSize: "13px", resize: "vertical", fontFamily: "inherit", display: "block",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "8px" }}>
+              <span style={{ fontSize: "12px", color: charCountColor, fontWeight: "600" }}>
+                {draft.length} / {MAX_CHARS}{isOver ? ` — ${draft.length - MAX_CHARS} over limit` : ""}
+              </span>
+              <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+                {result?.error && <span style={{ fontSize: "12px", color: "#d72c0d" }}>{result.error}</span>}
+                <button
+                  onClick={() => saveOne(item)}
+                  disabled={isSaving || isOver || !draft.trim()}
+                  style={{
+                    padding: "6px 18px", cursor: isSaving || isOver || !draft.trim() ? "not-allowed" : "pointer",
+                    background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
+                    fontSize: "13px", fontWeight: "600", opacity: isSaving || isOver || !draft.trim() ? 0.5 : 1,
+                  }}
+                >
+                  {isSaving ? "Saving..." : "Save"}
+                </button>
+              </div>
+            </div>
+          </s-section>
+        );
+      })}
+
+      {(tab === "pages" ? pagesHasNext : collectionsHasNext) && (
+        <s-section>
           <button
             onClick={tab === "pages" ? loadMorePages : loadMoreCollections}
             disabled={tab === "pages" ? pagesLoading : collectionsLoading}
-            style={{ marginTop: "8px", padding: "8px 16px", cursor: "pointer", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontSize: "14px" }}
+            style={{ padding: "8px 16px", cursor: "pointer", background: "#fff", color: "#333", border: "1px solid #ccc", borderRadius: "4px", fontSize: "14px" }}
           >
             {(tab === "pages" ? pagesLoading : collectionsLoading) ? "Loading..." : `Load More ${tab === "pages" ? "Pages" : "Collections"}`}
           </button>
-        )}
-      </s-section>
+        </s-section>
+      )}
     </s-page>
   );
 }
