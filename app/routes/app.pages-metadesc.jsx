@@ -208,12 +208,14 @@ export default function PagesMetaDesc() {
     setSavingAll(false);
   };
 
+  const shopParam = initial.shop ? `?shop=${initial.shop}` : "";
+
   const saveOne = (item) => new Promise((resolve) => {
     const value = (drafts[item.id] ?? item.metafield?.value ?? "").trim();
     setSaving(prev => ({ ...prev, [item.id]: true }));
     saveFetcher.submit(
       { ownerId: item.id, value },
-      { method: "POST", action: "/app/pages-metadesc" }
+      { method: "POST", action: `/app/pages-metadesc${shopParam}` }
     );
     const check = setInterval(() => {
       if (saveFetcher.state === "idle") {
@@ -229,7 +231,7 @@ export default function PagesMetaDesc() {
   const handleReauth = () => {
     saveFetcher.submit(
       { _intent: "reauth" },
-      { method: "POST", action: "/app/pages-metadesc" }
+      { method: "POST", action: `/app/pages-metadesc${shopParam}` }
     );
     setReauthLoading(true);
   };
