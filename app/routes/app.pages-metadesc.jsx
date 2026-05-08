@@ -1,6 +1,7 @@
 import { useLoaderData } from "react-router";
-import { authenticate } from "../shopify.server";
+import { authenticate, sessionStorage } from "../shopify.server";
 import { useState } from "react";
+import { redirect } from "react-router";
 
 const MAX_CHARS = 155;
 
@@ -9,14 +10,17 @@ function emptyTab(error = null) {
 }
 
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
+
+  const grantedScopes = (session.scope || "").split(",").map(s => s.trim());
+  const hasContentScope = grantedScopes.includes("read_content") || grantedScopes.includes("write_content");
 
   let pages = emptyTab();
   let collections = emptyTab();
 
   try {
     const res = await admin.graphql(
-      `{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle bodySummary metafield(namespace: "global", key: "description_tag") { id value } } } }`
+      `{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
     );
     const json = await res.json();
     if (json.data?.pages) {
@@ -58,13 +62,23 @@ export async function loader({ request }) {
     collections = emptyTab(e.message);
   }
 
-  return { pages, collections };
+  return { pages, collections, hasContentScope, shop: session.shop };
 }
 
 export async function action({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const formData = await request.formData();
   const intent = formData.get("_intent");
+
+  if (intent === "reauth") {
+    try {
+      const allSessions = await sessionStorage.findSessionsByShop(session.shop);
+      await Promise.all(allSessions.map(s => sessionStorage.deleteSession(s.id)));
+    } catch (e) {
+      console.error("[pages-metadesc] reauth session clear error:", e.message);
+    }
+    return redirect(`/auth?shop=${session.shop}`);
+  }
 
   if (intent === "generate") {
     const title = formData.get("title") || "";
@@ -80,7 +94,7 @@ export async function action({ request }) {
           model: "llama3.1:8b",
           prompt: isCollection
             ? `You are an SEO copywriter. Write a meta description for this product collection page.\n\nCollection name: ${title}\nCollection description: ${body || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what products are in this collection.\n- End with a short action phrase.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`
-            : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${title}\nPage content summary: ${body || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`,
+            : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${title}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`,
           stream: false,
         }),
       });
@@ -151,14 +165,17 @@ export default function PagesMetaDesc() {
   const [drafts, setDrafts] = useState({});
   const [saving, setSaving] = useState({});
   const [generating, setGenerating] = useState({});
+  const [generatingAll, setGeneratingAll] = useState(false);
+  const [generateAllProgress, setGenerateAllProgress] = useState({ done: 0, total: 0 });
   const [results, setResults] = useState({});
+  const [reauthLoading, setReauthLoading] = useState(false);
 
   const getDraft = (item) =>
     drafts[item.id] !== undefined ? drafts[item.id] : (item.metafield?.value || "");
 
   const generateOne = async (item) => {
     const resourceType = tab === "collections" ? "collection" : "page";
-    const body = item.bodySummary || item.description || "";
+    const body = item.description || "";
     setGenerating(prev => ({ ...prev, [item.id]: true }));
     setResults(prev => ({ ...prev, [item.id]: undefined }));
     const form = new FormData();
@@ -180,6 +197,22 @@ export default function PagesMetaDesc() {
     setGenerating(prev => ({ ...prev, [item.id]: false }));
   };
 
+  const generateAllMissing = async () => {
+    const currentItems = tab === "pages" ? pages : collections;
+    const missing = currentItems.filter(i => {
+      const hasMeta = results[i.id]?.success ? results[i.id].value : i.metafield?.value;
+      return !hasMeta && !drafts[i.id];
+    });
+    if (missing.length === 0) return;
+    setGeneratingAll(true);
+    setGenerateAllProgress({ done: 0, total: missing.length });
+    for (const item of missing) {
+      await generateOne(item);
+      setGenerateAllProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    }
+    setGeneratingAll(false);
+  };
+
   const saveOne = async (item) => {
     const value = (drafts[item.id] ?? item.metafield?.value ?? "").trim();
     setSaving(prev => ({ ...prev, [item.id]: true }));
@@ -194,6 +227,14 @@ export default function PagesMetaDesc() {
       setResults(prev => ({ ...prev, [item.id]: { error: "Request failed" } }));
     }
     setSaving(prev => ({ ...prev, [item.id]: false }));
+  };
+
+  const handleReauth = async () => {
+    setReauthLoading(true);
+    const form = new FormData();
+    form.append("_intent", "reauth");
+    await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+    window.location.reload();
   };
 
   const loadMorePages = async () => {
@@ -224,12 +265,17 @@ export default function PagesMetaDesc() {
   const items = tab === "pages" ? pages : collections;
   const hasMeta = items.filter(i => results[i.id]?.success ? results[i.id].value : i.metafield?.value).length;
   const missing = items.length - hasMeta;
+  const missingWithoutDraft = items.filter(i => {
+    const hasMeta = results[i.id]?.success ? results[i.id].value : i.metafield?.value;
+    return !hasMeta && !drafts[i.id];
+  }).length;
 
   const tabStyle = (t) => ({
     padding: "10px 24px", fontWeight: "600", fontSize: "14px", textDecoration: "none",
     color: tab === t ? "#008060" : "#6d7175",
     borderBottom: tab === t ? "2px solid #008060" : "2px solid transparent",
-    marginBottom: "-2px", cursor: "pointer", background: "none", border: "none",
+    marginBottom: "-2px", cursor: "pointer", background: "none",
+    borderTop: "none", borderLeft: "none", borderRight: "none",
   });
 
   const statCell = (label, value, color) => (
@@ -265,22 +311,57 @@ export default function PagesMetaDesc() {
         </table>
       </s-section>
 
+      {!initial.hasContentScope && (
+        <s-section>
+          <div style={{ padding: "12px 16px", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "6px", color: "#856404", fontSize: "14px" }}>
+            <strong>Missing read_content permission.</strong> The app's access token was granted before this scope was added.
+            <br /><br />
+            Click below to clear your session and re-authorize — this will request the correct permissions.
+            <br /><br />
+            <button
+              onClick={handleReauth}
+              disabled={reauthLoading}
+              style={{ padding: "6px 16px", background: "#ffc107", color: "#333", border: "none", borderRadius: "4px", fontWeight: "600", cursor: "pointer" }}
+            >
+              {reauthLoading ? "Redirecting..." : "Fix Permissions & Re-authorize"}
+            </button>
+          </div>
+        </s-section>
+      )}
+
       {tabError && (
         <s-section>
           <div style={{ padding: "12px 16px", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "6px", color: "#856404", fontSize: "14px" }}>
             <strong>Could not load {tab}.</strong> Error: {tabError}
             <br /><br />
-            If this says "Access denied", the app needs <strong>read_content</strong> and <strong>write_content</strong> permissions.
-            Close and re-open the app from your Shopify admin — Shopify will ask you to re-authorize.
+            If this says "Access denied", click <strong>Fix Permissions & Re-authorize</strong> above, or uninstall and reinstall the app from your Shopify admin.
           </div>
         </s-section>
       )}
 
       <s-section>
-        <s-paragraph>
-          Set the meta description for each {tab === "pages" ? "page" : "collection"} — this appears as the snippet in Google search results.
-          Aim for 120–155 characters. Saved to the global.description_tag metafield.
-        </s-paragraph>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px" }}>
+          <s-paragraph>
+            Set the meta description for each {tab === "pages" ? "page" : "collection"} — appears as the snippet in Google search results.
+            Aim for 120–155 characters.
+          </s-paragraph>
+          {items.length > 0 && (
+            <button
+              onClick={generateAllMissing}
+              disabled={generatingAll || missingWithoutDraft === 0}
+              style={{
+                padding: "8px 20px", cursor: generatingAll || missingWithoutDraft === 0 ? "not-allowed" : "pointer",
+                background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
+                fontSize: "13px", fontWeight: "600", opacity: generatingAll || missingWithoutDraft === 0 ? 0.6 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {generatingAll
+                ? `Generating... (${generateAllProgress.done}/${generateAllProgress.total})`
+                : `Generate All Missing (${missingWithoutDraft})`}
+            </button>
+          )}
+        </div>
       </s-section>
 
       {items.map(item => {
@@ -328,11 +409,11 @@ export default function PagesMetaDesc() {
                 {result?.error && <span style={{ fontSize: "12px", color: "#d72c0d" }}>{result.error}</span>}
                 <button
                   onClick={() => generateOne(item)}
-                  disabled={isGenerating || isSaving}
+                  disabled={isGenerating || isSaving || generatingAll}
                   style={{
-                    padding: "6px 18px", cursor: isGenerating || isSaving ? "not-allowed" : "pointer",
+                    padding: "6px 18px", cursor: isGenerating || isSaving || generatingAll ? "not-allowed" : "pointer",
                     background: "#fff", color: "#008060", border: "1px solid #008060", borderRadius: "4px",
-                    fontSize: "13px", fontWeight: "600", opacity: isGenerating || isSaving ? 0.5 : 1,
+                    fontSize: "13px", fontWeight: "600", opacity: isGenerating || isSaving || generatingAll ? 0.5 : 1,
                   }}
                 >
                   {isGenerating ? "Generating..." : "Generate with AI"}
