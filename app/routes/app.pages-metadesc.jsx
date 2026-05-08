@@ -15,16 +15,23 @@ export async function loader({ request }) {
   const pagesData = await pagesRes.json();
   const collectionsData = await collectionsRes.json();
 
+  const pagesNodes = pagesData.data?.pages?.nodes ?? [];
+  const pagesPageInfo = pagesData.data?.pages?.pageInfo ?? { hasNextPage: false, endCursor: null };
+  const collectionsNodes = collectionsData.data?.collections?.nodes ?? [];
+  const collectionsPageInfo = collectionsData.data?.collections?.pageInfo ?? { hasNextPage: false, endCursor: null };
+
   return {
     pages: {
-      items: pagesData.data.pages.nodes,
-      hasNextPage: pagesData.data.pages.pageInfo.hasNextPage,
-      endCursor: pagesData.data.pages.pageInfo.endCursor,
+      items: pagesNodes,
+      hasNextPage: pagesPageInfo.hasNextPage,
+      endCursor: pagesPageInfo.endCursor,
+      scopeError: !pagesData.data?.pages,
     },
     collections: {
-      items: collectionsData.data.collections.nodes,
-      hasNextPage: collectionsData.data.collections.pageInfo.hasNextPage,
-      endCursor: collectionsData.data.collections.pageInfo.endCursor,
+      items: collectionsNodes,
+      hasNextPage: collectionsPageInfo.hasNextPage,
+      endCursor: collectionsPageInfo.endCursor,
+      scopeError: !collectionsData.data?.collections,
     },
   };
 }
@@ -219,6 +226,7 @@ export default function PagesMetaDesc() {
     setCollectionsLoading(false);
   };
 
+  const scopeError = tab === "pages" ? initial.pages.scopeError : initial.collections.scopeError;
   const items = tab === "pages" ? pages : collections;
   const hasMeta = items.filter(i => savedValues[i.id] !== undefined ? savedValues[i.id] : i.metafield?.value).length;
   const missing = items.length - hasMeta;
@@ -262,6 +270,15 @@ export default function PagesMetaDesc() {
           </tbody>
         </table>
       </s-section>
+
+      {scopeError && (
+        <s-section>
+          <div style={{ padding: "12px 16px", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "6px", color: "#856404", fontSize: "14px" }}>
+            <strong>Permission needed.</strong> This app needs the <code>read_content</code> and <code>write_content</code> scopes to manage pages.
+            Please re-open the app from your Shopify admin to re-authorize — Shopify will prompt you automatically.
+          </div>
+        </s-section>
+      )}
 
       <s-section>
         <s-paragraph>
