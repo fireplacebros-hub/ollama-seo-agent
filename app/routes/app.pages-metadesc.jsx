@@ -4,36 +4,61 @@ import { useState } from "react";
 
 const MAX_CHARS = 155;
 
+function emptyTab(error = null) {
+  return { items: [], hasNextPage: false, endCursor: null, error };
+}
+
 export async function loader({ request }) {
   const { admin } = await authenticate.admin(request);
 
-  const [pagesRes, collectionsRes] = await Promise.all([
-    admin.graphql(`{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`),
-    admin.graphql(`{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`),
-  ]);
+  let pages = emptyTab();
+  let collections = emptyTab();
 
-  const pagesData = await pagesRes.json();
-  const collectionsData = await collectionsRes.json();
+  try {
+    const res = await admin.graphql(
+      `{ pages(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
+    );
+    const json = await res.json();
+    if (json.data?.pages) {
+      pages = {
+        items: json.data.pages.nodes,
+        hasNextPage: json.data.pages.pageInfo.hasNextPage,
+        endCursor: json.data.pages.pageInfo.endCursor,
+        error: null,
+      };
+    } else {
+      const msg = json.errors?.[0]?.message ?? "Could not load pages";
+      console.error("[pages-metadesc] pages query error:", msg);
+      pages = emptyTab(msg);
+    }
+  } catch (e) {
+    console.error("[pages-metadesc] pages exception:", e.message);
+    pages = emptyTab(e.message);
+  }
 
-  const pagesNodes = pagesData.data?.pages?.nodes ?? [];
-  const pagesPageInfo = pagesData.data?.pages?.pageInfo ?? { hasNextPage: false, endCursor: null };
-  const collectionsNodes = collectionsData.data?.collections?.nodes ?? [];
-  const collectionsPageInfo = collectionsData.data?.collections?.pageInfo ?? { hasNextPage: false, endCursor: null };
+  try {
+    const res = await admin.graphql(
+      `{ collections(first: 50) { pageInfo { hasNextPage endCursor } nodes { id title handle metafield(namespace: "global", key: "description_tag") { id value } } } }`
+    );
+    const json = await res.json();
+    if (json.data?.collections) {
+      collections = {
+        items: json.data.collections.nodes,
+        hasNextPage: json.data.collections.pageInfo.hasNextPage,
+        endCursor: json.data.collections.pageInfo.endCursor,
+        error: null,
+      };
+    } else {
+      const msg = json.errors?.[0]?.message ?? "Could not load collections";
+      console.error("[pages-metadesc] collections query error:", msg);
+      collections = emptyTab(msg);
+    }
+  } catch (e) {
+    console.error("[pages-metadesc] collections exception:", e.message);
+    collections = emptyTab(e.message);
+  }
 
-  return {
-    pages: {
-      items: pagesNodes,
-      hasNextPage: pagesPageInfo.hasNextPage,
-      endCursor: pagesPageInfo.endCursor,
-      scopeError: !pagesData.data?.pages,
-    },
-    collections: {
-      items: collectionsNodes,
-      hasNextPage: collectionsPageInfo.hasNextPage,
-      endCursor: collectionsPageInfo.endCursor,
-      scopeError: !collectionsData.data?.collections,
-    },
-  };
+  return { pages, collections };
 }
 
 export async function action({ request }) {
@@ -226,7 +251,7 @@ export default function PagesMetaDesc() {
     setCollectionsLoading(false);
   };
 
-  const scopeError = tab === "pages" ? initial.pages.scopeError : initial.collections.scopeError;
+  const tabError = tab === "pages" ? initial.pages.error : initial.collections.error;
   const items = tab === "pages" ? pages : collections;
   const hasMeta = items.filter(i => savedValues[i.id] !== undefined ? savedValues[i.id] : i.metafield?.value).length;
   const missing = items.length - hasMeta;
@@ -271,11 +296,13 @@ export default function PagesMetaDesc() {
         </table>
       </s-section>
 
-      {scopeError && (
+      {tabError && (
         <s-section>
           <div style={{ padding: "12px 16px", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "6px", color: "#856404", fontSize: "14px" }}>
-            <strong>Permission needed.</strong> This app needs the <code>read_content</code> and <code>write_content</code> scopes to manage pages.
-            Please re-open the app from your Shopify admin to re-authorize — Shopify will prompt you automatically.
+            <strong>Could not load {tab}.</strong> Error: {tabError}
+            <br /><br />
+            If this says "Access denied", the app needs <strong>read_content</strong> and <strong>write_content</strong> permissions.
+            Close and re-open the app from your Shopify admin — Shopify will ask you to re-authorize.
           </div>
         </s-section>
       )}
