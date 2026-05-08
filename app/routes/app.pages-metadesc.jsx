@@ -66,7 +66,15 @@ export async function loader({ request }) {
 }
 
 export async function action({ request }) {
-  const { admin, session } = await authenticate.admin(request);
+  let admin, session;
+  try {
+    ({ admin, session } = await authenticate.admin(request));
+  } catch (thrown) {
+    if (thrown instanceof Response) {
+      return Response.json({ error: "Session expired — please reload the app to re-authenticate." }, { status: 401 });
+    }
+    throw thrown;
+  }
   const formData = await request.formData();
   const intent = formData.get("_intent");
 
