@@ -61,7 +61,9 @@ export async function loader({ request }) {
     collections = emptyTab(e.message);
   }
 
-  return { pages, collections, hasContentScope, shop: session.shop };
+  // eslint-disable-next-line no-undef
+  const ollamaHost = (process.env.OLLAMA_HOST || "").replace(/\/$/, "");
+  return { pages, collections, hasContentScope, shop: session.shop, ollamaHost };
 }
 
 export async function action({ request }) {
@@ -154,21 +156,41 @@ export default function PagesMetaDesc() {
     drafts[item.id] !== undefined ? drafts[item.id] : (item.metafield?.value || "");
 
   const generateOne = async (item) => {
-    const resourceType = tab === "collections" ? "collection" : "page";
-    const body = item.description || "";
+    const isCollection = tab === "collections";
     setGenerating(prev => ({ ...prev, [item.id]: true }));
     setResults(prev => ({ ...prev, [item.id]: undefined }));
-    const form = new FormData();
-    form.append("title", item.title);
-    form.append("body", body);
-    form.append("resourceType", resourceType);
+
+    if (!initial.ollamaHost) {
+      setResults(prev => ({ ...prev, [item.id]: { error: "OLLAMA_HOST is not configured on the server." } }));
+      setGenerating(prev => ({ ...prev, [item.id]: false }));
+      return;
+    }
+
+    const prompt = isCollection
+      ? `You are an SEO copywriter. Write a meta description for this product collection page.\n\nCollection name: ${item.title}\nCollection description: ${item.description || "None provided"}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what products are in this collection.\n- End with a short action phrase.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`
+      : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${item.title}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`;
+
     try {
-      const res = await fetch("/app/generate-meta-api", { method: "POST", body: form });
-      const data = await res.json();
-      if (data.generated) {
-        setDrafts(prev => ({ ...prev, [item.id]: data.generated }));
+      const res = await fetch(`${initial.ollamaHost}/api/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "ngrok-skip-browser-warning": "true" },
+        body: JSON.stringify({ model: "llama3.1:8b", prompt, stream: false }),
+      });
+      const text = await res.text();
+      if (!res.ok || text.trimStart().startsWith("<")) {
+        setResults(prev => ({ ...prev, [item.id]: { error: `Ollama unavailable (HTTP ${res.status}) — is ngrok + Ollama running?` } }));
       } else {
-        setResults(prev => ({ ...prev, [item.id]: { error: data.error || "AI returned empty response" } }));
+        const data = JSON.parse(text);
+        let generated = data.response?.trim().split("\n")[0].replace(/^["\']|["\']$/g, "") || "";
+        if (generated.length > MAX_CHARS) {
+          const cut = generated.slice(0, MAX_CHARS - 3);
+          generated = cut.slice(0, cut.lastIndexOf(" ")) + "...";
+        }
+        if (!generated) {
+          setResults(prev => ({ ...prev, [item.id]: { error: "Ollama returned an empty response." } }));
+        } else {
+          setDrafts(prev => ({ ...prev, [item.id]: generated }));
+        }
       }
     } catch (e) {
       setResults(prev => ({ ...prev, [item.id]: { error: "Network error: " + e.message } }));

@@ -118,6 +118,27 @@ export default function ImageCompress() {
   const needsCompression = allImages.filter(m => !isAlreadyWebP(m.image.url) && !results[m.id]?.success).length;
   const totalSaved = Object.values(results).filter(r => r.success).reduce((sum, r) => sum + (r.savedBytes || 0), 0);
 
+  const mediaToProduct = {};
+  products.forEach(p => p.media.nodes.forEach(m => {
+    if (m.image) mediaToProduct[m.id] = { title: p.title, url: m.image.url };
+  }));
+
+  const errorGroups = {};
+  Object.entries(results).forEach(([mediaId, result]) => {
+    if (!result?.error) return;
+    const err = result.error;
+    const category =
+      err.startsWith("Download failed") ? "Download failed" :
+      err.startsWith("Staged upload PUT failed") ? "Staged upload PUT failed" :
+      err.startsWith("Staged upload create failed") ? "Staged upload create failed" :
+      err.startsWith("Create media failed") ? "Create media failed" :
+      err.startsWith("Network error") ? "Network error" :
+      err.startsWith("Server error") ? "Server error" :
+      err.slice(0, 60);
+    if (!errorGroups[category]) errorGroups[category] = [];
+    errorGroups[category].push({ mediaId, error: err, ...mediaToProduct[mediaId] });
+  });
+
   const statCell = (label, value, color) => (
     <td style={{ padding: "10px 20px", textAlign: "center", borderRight: "1px solid #e1e3e5" }}>
       <div style={{ fontSize: "22px", fontWeight: "700", color }}>{value}</div>
@@ -149,6 +170,38 @@ export default function ImageCompress() {
           </tbody>
         </table>
       </s-section>
+
+      {failed > 0 && (
+        <s-section>
+          <div style={{ padding: "12px 16px", background: "#fff3cd", border: "1px solid #ffc107", borderRadius: "6px" }}>
+            <div style={{ fontWeight: "700", fontSize: "14px", color: "#856404", marginBottom: "12px" }}>
+              {failed} image{failed > 1 ? "s" : ""} failed — grouped by error type:
+            </div>
+            {Object.entries(errorGroups).map(([category, items]) => (
+              <div key={category} style={{ marginBottom: "16px" }}>
+                <div style={{ fontWeight: "600", fontSize: "13px", color: "#d72c0d", marginBottom: "4px" }}>
+                  [{items.length}] {category}
+                </div>
+                <div style={{ fontSize: "12px", color: "#555", marginBottom: "4px", fontStyle: "italic" }}>
+                  {items[0]?.error}
+                </div>
+                <ul style={{ margin: "4px 0 0 16px", padding: 0, fontSize: "12px", color: "#333" }}>
+                  {items.map(item => (
+                    <li key={item.mediaId} style={{ marginBottom: "2px" }}>
+                      <strong>{item.title || "Unknown product"}</strong>
+                      {item.url && (
+                        <span style={{ color: "#6d7175", marginLeft: "6px" }}>
+                          {item.url.split("/").pop().split("?")[0].slice(0, 40)}
+                        </span>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+        </s-section>
+      )}
 
       <s-section>
         <s-paragraph>
