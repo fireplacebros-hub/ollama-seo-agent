@@ -23,6 +23,7 @@ export default function App() {
         <s-link href="/app/image-compress">Image Compression</s-link>
         <s-link href="/app/pages-metadesc">Pages & Collections Meta</s-link>
         <s-link href="/app/noindex">Noindex Manager</s-link>
+        <s-link href="/app/seo-audit">SEO Audit</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
