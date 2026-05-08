@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { isAlreadyWebP, formatBytes } from "../image-utils.js";
 
 export async function loader({ request }) {
-  const { admin } = await authenticate.admin(request);
+  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const cursor = url.searchParams.get("cursor");
 
@@ -20,6 +20,7 @@ export async function loader({ request }) {
     products: nodes,
     hasNextPage: pageInfo.hasNextPage,
     endCursor: pageInfo.endCursor,
+    shop: session.shop,
   };
 }
 
@@ -34,6 +35,8 @@ export default function ImageCompress() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [bulkProgress, setBulkProgress] = useState({ done: 0, total: 0 });
   const bulkStopRef = useRef(false);
+
+  const shopParam = initialData.shop ? `?shop=${initialData.shop}` : "";
 
   const loadMore = async () => {
     setLoadingMore(true);
@@ -51,23 +54,81 @@ export default function ImageCompress() {
 
   const compressOne = async (mediaId, productId, imageUrl, altText) => {
     setCompressing(prev => ({ ...prev, [mediaId]: true }));
-    const form = new FormData();
-    form.append("mediaId", mediaId);
-    form.append("productId", productId);
-    form.append("imageUrl", imageUrl);
-    form.append("altText", altText || "");
     try {
-      const res = await fetch("/app/image-compress-api", { method: "POST", body: form });
-      let data;
-      try {
-        data = await res.json();
-      } catch {
-        const text = await res.text().catch(() => "");
-        data = { error: `Server error (${res.status}): ${text.slice(0, 300)}` };
+      // 1. Download image in browser
+      const imgRes = await fetch(imageUrl);
+      if (!imgRes.ok) throw new Error(`Download failed: ${imgRes.status}`);
+      const imgBlob = await imgRes.blob();
+      const originalSize = imgBlob.size;
+
+      // 2. Decode and draw to canvas
+      const img = new Image();
+      const objectUrl = URL.createObjectURL(imgBlob);
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = () => reject(new Error("Failed to decode image"));
+        img.src = objectUrl;
+      });
+      URL.revokeObjectURL(objectUrl);
+
+      const MAX_DIM = 2048;
+      const MAX_BYTES = 100 * 1024;
+      let w = img.naturalWidth, h = img.naturalHeight;
+      if (w > MAX_DIM || h > MAX_DIM) {
+        const r = Math.min(MAX_DIM / w, MAX_DIM / h);
+        w = Math.floor(w * r);
+        h = Math.floor(h * r);
       }
-      setResults(prev => ({ ...prev, [mediaId]: data }));
+      const canvas = document.createElement("canvas");
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext("2d").drawImage(img, 0, 0, w, h);
+
+      // 3. Convert to WebP, reducing quality until under 100KB
+      let quality = 0.85;
+      let webpBlob;
+      do {
+        webpBlob = await new Promise((resolve, reject) =>
+          canvas.toBlob(b => b ? resolve(b) : reject(new Error("WebP encoding failed")), "image/webp", quality)
+        );
+        quality = Math.max(quality - 0.1, 0.1);
+      } while (webpBlob.size > MAX_BYTES && quality > 0.1);
+
+      const compressedSize = webpBlob.size;
+
+      // 4. Get staged upload URL from server (lightweight Shopify API call)
+      const baseName = new URL(imageUrl).pathname.split("/").pop().split("?")[0].replace(/\.[^.]+$/, "");
+      const stageForm = new FormData();
+      stageForm.append("filename", `${baseName}.webp`);
+      stageForm.append("fileSize", String(compressedSize));
+      const stageRes = await fetch(`/app/image-stage-api${shopParam}`, { method: "POST", body: stageForm });
+      const stageData = await stageRes.json();
+      if (stageData.error) throw new Error(`Staged upload: ${stageData.error}`);
+
+      // 5. PUT WebP blob directly to GCS from browser
+      const putRes = await fetch(stageData.url, {
+        method: "PUT",
+        headers: { "Content-Type": "image/webp" },
+        body: webpBlob,
+      });
+      if (!putRes.ok) {
+        const body = await putRes.text().catch(() => "");
+        throw new Error(`GCS PUT failed (${putRes.status}): ${body.slice(0, 200)}`);
+      }
+
+      // 6. Replace media on Shopify (lightweight server call)
+      const replaceForm = new FormData();
+      replaceForm.append("productId", productId);
+      replaceForm.append("oldMediaId", mediaId);
+      replaceForm.append("resourceUrl", stageData.resourceUrl);
+      replaceForm.append("altText", altText || "");
+      const replaceRes = await fetch(`/app/image-replace-api${shopParam}`, { method: "POST", body: replaceForm });
+      const replaceData = await replaceRes.json();
+      if (replaceData.error) throw new Error(`Replace media: ${replaceData.error}`);
+
+      setResults(prev => ({ ...prev, [mediaId]: { success: true, savedBytes: originalSize - compressedSize, originalSize, compressedSize } }));
     } catch (e) {
-      setResults(prev => ({ ...prev, [mediaId]: { error: `Network error: ${e.message}` } }));
+      setResults(prev => ({ ...prev, [mediaId]: { error: e.message } }));
     }
     setCompressing(prev => ({ ...prev, [mediaId]: false }));
   };
