@@ -107,7 +107,7 @@ export async function action({ request }) {
       if (!generated) return Response.json({ error: "Ollama returned empty response" });
       return Response.json({ generated });
     } catch (e) {
-      return Response.json({ error: "Ollama error: " + e.message });
+      return Response.json({ error: `Ollama unreachable: ${e.message} — is the ngrok tunnel running?` });
     }
   }
 
@@ -193,8 +193,8 @@ export default function PagesMetaDesc() {
       } else {
         setResults(prev => ({ ...prev, [item.id]: { error: data.error || "AI returned empty response" } }));
       }
-    } catch {
-      setResults(prev => ({ ...prev, [item.id]: { error: "Request failed" } }));
+    } catch (e) {
+      setResults(prev => ({ ...prev, [item.id]: { error: "Request failed: " + e.message } }));
     }
     setGenerating(prev => ({ ...prev, [item.id]: false }));
   };
