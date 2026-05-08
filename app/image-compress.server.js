@@ -5,7 +5,7 @@ const MAX_SIZE_BYTES = 100 * 1024; // 100KB
 const MAX_DIMENSION = 2048;
 
 export async function downloadImage(url) {
-  const res = await fetch(url);
+  const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
   if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
   return Buffer.from(await res.arrayBuffer());
 }
@@ -43,7 +43,7 @@ export async function stagedUploadWebP(admin, buffer, filename) {
           filename,
           mimeType: "image/webp",
           fileSize,
-          resource: "IMAGE",
+          resource: "PRODUCT_IMAGE",
           httpMethod: "PUT",
         }],
       },
@@ -52,16 +52,24 @@ export async function stagedUploadWebP(admin, buffer, filename) {
 
   const stageData = await stageRes.json();
   const userErrors = stageData.data?.stagedUploadsCreate?.userErrors;
-  if (userErrors?.length) throw new Error(userErrors[0].message);
-
-  const target = stageData.data.stagedUploadsCreate.stagedTargets[0];
-  const headers = { "Content-Type": "image/webp", "Content-Length": fileSize };
-  for (const { name, value } of target.parameters) {
-    headers[name] = value;
+  if (userErrors?.length) throw new Error(`Staged upload create failed: ${userErrors[0].message}`);
+  if (!stageData.data?.stagedUploadsCreate?.stagedTargets?.[0]) {
+    throw new Error(`Staged upload create returned no target: ${JSON.stringify(stageData).slice(0, 200)}`);
   }
 
-  const putRes = await fetch(target.url, { method: "PUT", headers, body: buffer });
-  if (!putRes.ok) throw new Error(`Staged upload PUT failed: ${putRes.status}`);
+  const target = stageData.data.stagedUploadsCreate.stagedTargets[0];
+
+  // Signed GCS PUT URLs embed auth in query params — only Content-Type header is needed
+  const putRes = await fetch(target.url, {
+    method: "PUT",
+    headers: { "Content-Type": "image/webp" },
+    body: buffer,
+    signal: AbortSignal.timeout(60000),
+  });
+  if (!putRes.ok) {
+    const errBody = await putRes.text().catch(() => "");
+    throw new Error(`Staged upload PUT failed (${putRes.status}): ${errBody.slice(0, 200)}`);
+  }
 
   return target.resourceUrl;
 }
@@ -88,7 +96,7 @@ export async function replaceProductImage(admin, productId, oldMediaId, resource
 
   const createData = await createRes.json();
   const createErrors = createData.data?.productCreateMedia?.userErrors;
-  if (createErrors?.length) throw new Error(createErrors[0].message);
+  if (createErrors?.length) throw new Error(`Create media failed: ${createErrors[0].message}`);
 
   const deleteRes = await admin.graphql(
     `mutation productDeleteMedia($productId: ID!, $mediaIds: [ID!]!) {
