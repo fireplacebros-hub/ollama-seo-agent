@@ -368,34 +368,36 @@ export default function PagesMetaDesc() {
             Aim for 120–155 characters.
           </s-paragraph>
           {items.length > 0 && (
-            <button
-              onClick={generateAllMissing}
-              disabled={generatingAll || missingWithoutDraft === 0}
-              style={{
-                padding: "8px 20px", cursor: generatingAll || missingWithoutDraft === 0 ? "not-allowed" : "pointer",
-                background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
-                fontSize: "13px", fontWeight: "600", opacity: generatingAll || missingWithoutDraft === 0 ? 0.6 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {generatingAll
-                ? `Generating... (${generateAllProgress.done}/${generateAllProgress.total})`
-                : `Generate All Missing (${missingWithoutDraft})`}
-            </button>
-            <button
-              onClick={saveAll}
-              disabled={savingAll || generatingAll || savableCount === 0}
-              style={{
-                padding: "8px 20px", cursor: savingAll || generatingAll || savableCount === 0 ? "not-allowed" : "pointer",
-                background: "#fff", color: "#008060", border: "1px solid #008060", borderRadius: "4px",
-                fontSize: "13px", fontWeight: "600", opacity: savingAll || generatingAll || savableCount === 0 ? 0.6 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {savingAll
-                ? `Saving... (${saveAllProgress.done}/${saveAllProgress.total})`
-                : `Save All (${savableCount})`}
-            </button>
+            <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+              <button
+                onClick={generateAllMissing}
+                disabled={generatingAll || missingWithoutDraft === 0}
+                style={{
+                  padding: "8px 20px", cursor: generatingAll || missingWithoutDraft === 0 ? "not-allowed" : "pointer",
+                  background: "#008060", color: "#fff", border: "none", borderRadius: "4px",
+                  fontSize: "13px", fontWeight: "600", opacity: generatingAll || missingWithoutDraft === 0 ? 0.6 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {generatingAll
+                  ? `Generating... (${generateAllProgress.done}/${generateAllProgress.total})`
+                  : `Generate All Missing (${missingWithoutDraft})`}
+              </button>
+              <button
+                onClick={saveAll}
+                disabled={savingAll || generatingAll || savableCount === 0}
+                style={{
+                  padding: "8px 20px", cursor: savingAll || generatingAll || savableCount === 0 ? "not-allowed" : "pointer",
+                  background: "#fff", color: "#008060", border: "1px solid #008060", borderRadius: "4px",
+                  fontSize: "13px", fontWeight: "600", opacity: savingAll || generatingAll || savableCount === 0 ? 0.6 : 1,
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {savingAll
+                  ? `Saving... (${saveAllProgress.done}/${saveAllProgress.total})`
+                  : `Save All (${savableCount})`}
+              </button>
+            </div>
           )}
         </div>
       </s-section>
