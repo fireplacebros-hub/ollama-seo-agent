@@ -21,6 +21,7 @@ export default function App() {
         <s-link href="/app/seo-metadesc">SEO: Meta Descriptions</s-link>
         <s-link href="/app/seo-runner">SEO: Run Both</s-link>
         <s-link href="/app/image-compress">Image Compression</s-link>
+        <s-link href="/app/pages-metadesc">Pages & Collections Meta</s-link>
       </s-app-nav>
       <Outlet />
     </AppProvider>
