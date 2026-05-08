@@ -2,6 +2,7 @@ import { useLoaderData } from "react-router";
 import { authenticate, sessionStorage } from "../shopify.server";
 import { useState } from "react";
 import { redirect } from "react-router";
+import { useAppBridge } from "@shopify/app-bridge-react";
 
 const MAX_CHARS = 155;
 
@@ -157,6 +158,15 @@ export async function action({ request }) {
 
 export default function PagesMetaDesc() {
   const initial = useLoaderData();
+  const shopify = useAppBridge();
+
+  const authFetch = async (url, options = {}) => {
+    const token = await shopify.idToken();
+    return fetch(url, {
+      ...options,
+      headers: { ...(options.headers || {}), "Authorization": `Bearer ${token}` },
+    });
+  };
 
   const [tab, setTab] = useState("pages");
 
@@ -194,7 +204,7 @@ export default function PagesMetaDesc() {
     form.append("body", body);
     form.append("resourceType", resourceType);
     try {
-      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
       const text = await res.text();
       let data;
       try {
@@ -258,7 +268,7 @@ export default function PagesMetaDesc() {
     form.append("ownerId", item.id);
     form.append("value", value);
     try {
-      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
       const data = await res.json();
       setResults(prev => ({ ...prev, [item.id]: data }));
     } catch {
@@ -272,7 +282,7 @@ export default function PagesMetaDesc() {
     const form = new FormData();
     form.append("_intent", "reauth");
     try {
-      const res = await fetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
+      const res = await authFetch("https://ollama-seo-agent.onrender.com/app/pages-metadesc", { method: "POST", body: form });
       const data = await res.json();
       if (data.redirectUrl) {
         window.top.location.href = `https://ollama-seo-agent.onrender.com${data.redirectUrl}`;
