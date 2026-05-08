@@ -26,10 +26,14 @@ export async function action({ request }) {
           : `You are an SEO copywriter. Write a meta description for this page.\n\nPage title: ${title}\n\nSTRICT RULES:\n- Total length must be 120-155 characters. Count every character including spaces before submitting.\n- Describe what the page is about clearly and specifically.\n- End with a short action phrase or benefit.\n- Return ONLY the meta description on a single line. No quotes. No labels. No explanation.`,
         stream: false,
       }),
-      signal: AbortSignal.timeout(30000),
+      signal: AbortSignal.timeout(120000),
     });
   } catch (e) {
-    return Response.json({ error: `Cannot reach Ollama at ${OLLAMA_BASE} — start ngrok and Ollama, then try again. (${e.message})` });
+    const isTimeout = e.name === "TimeoutError" || e.name === "AbortError";
+    return Response.json({ error: isTimeout
+      ? "Ollama timed out (120s) — the model may still be loading. Wait 30 seconds and try again."
+      : `Cannot reach Ollama at ${OLLAMA_BASE} — make sure ngrok and Ollama are running. (${e.message})`
+    });
   }
 
   const text = await ollamaRes.text();
