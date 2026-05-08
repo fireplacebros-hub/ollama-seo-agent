@@ -58,10 +58,16 @@ export default function ImageCompress() {
     form.append("altText", altText || "");
     try {
       const res = await fetch("/app/image-compress-api", { method: "POST", body: form });
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        const text = await res.text().catch(() => "");
+        data = { error: `Server error (${res.status}): ${text.slice(0, 300)}` };
+      }
       setResults(prev => ({ ...prev, [mediaId]: data }));
-    } catch {
-      setResults(prev => ({ ...prev, [mediaId]: { error: "Request failed" } }));
+    } catch (e) {
+      setResults(prev => ({ ...prev, [mediaId]: { error: `Network error: ${e.message}` } }));
     }
     setCompressing(prev => ({ ...prev, [mediaId]: false }));
   };
